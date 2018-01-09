@@ -1,4 +1,4 @@
-# [6536:5380]: WRITE (2 bytes) "\\?\C:\Users\0\Desktop\text.txt"
+# [6536:5380]: WRITE (2 bytes) "\\?\C:\Windows"
 # TypeOfAccess = WRITE
 # ObjectAccessed = \\?\C:\Users\0\Desktop\text.txt
 # pid = 6536
@@ -16,105 +16,138 @@
 import os
 from ProcessesClass import ProcessMonitor
 from ScannerClass import Scanner
-from MainMemProtection import update_and_display_notification
+from ConfigMGRClass import update_and_display_notification
 from CleanMemoryClass import CleanMemory
 
-
-class BehaviourAnalysis(ProcessMonitor, Scanner, CleanMemory):
-    def __init__(self):
+class BehaviourAnalysis(ProcessMonitor, Scanner, CleanMemory): #need to get read and write functions from old version
+    
+    def __init__(self, run=False):
         super().__init__()
-        self.pid = ''
+        open('temp.txt', 'w').close() #clear file
+        self.definitions = self.get_definitions()
+        self.action = self.get_action()
+        self.new_action = ''
         self.path = ''
-        self.definitions = []
-        self.file_location = 'definitions\\behavioural_definitions.txt'
-        self.get_definitions()
+        self.pid = ''
+        if run:
+            self.run()
+            
+    def run(self):
+        while True:
+            while True:
 
+                if self.new_action == self.action:
+                    self.action = self.new_action
+                    self.new_action = self.get_action()
+                else:
+                    break
+
+            self.action = self.new_action
+            self.check_action()
+            self.path = ''
+            self.pid = ''
+    
     def run_ba_args(self, arg1, arg2):
         if arg1 == '-add':
-            if self.write_new_def(arg2):
-                return 'definition successfully added'
-            raise EnvironmentError('ERROR: Path does not exist on file system')
+            self.write_new_def(arg2)
+            return 'definition successfully added'
         elif arg1 == '-remove':
-            if self.remove_def(arg2):
-                return 'definition successfully removed'
-            raise EnvironmentError('ERROR: Path not in definitions')
+            self.remove_def(arg2)
+            return 'definition successfully removed'    
         elif arg1 == '-s':
             return [line for line in open('definitions\\behavioural_definitions.txt', 'r')]
-        raise EnvironmentError('ERROR: Invalid Command')
+        raise EnvironmentError('ERROR: Invalid Command')  
 
-    def write_new_def(self, file_path):
-        if not os.path.exists(file_path):
-            return False
-        with open(self.file_location, 'a') as f:
-            f.write(file_path+'\n')
-        self.get_definitions()
-        return True
 
-    def remove_def(self, file_path):
-        path = file_path + '\n'
-        items = [line for line in open(self.file_location)]
-        if path not in items:
-            return False
-        items.remove(path)
-        with open('config\exclusions.txt', 'a') as f:
-            f.truncate(0)
-            [f.write(item) for item in items]
-        return True
-
-    def get_actions(self):
-        action = ''
-        with open('temp.txt', 'r+') as f:
-            for line in f:
-                action = line
+    def check_action(self):
+        self.ba_parse_path(self.action)
+        if self.path:
+            try:
+                for item in self.definitions:
+                        if os.path.samefile(self.path, item):    
+                            self.potential_detection()
+                            break
+                        elif item in self.path:
+                                self.potential_detection()
+                                break
+            except BaseException as e:
+                print(e)
+                
+                    
+                
+    def ba_parse_path(self, action):
+        
         if action:
             path = action.strip().split('"')
             del path[0]
             path = ''.join(path)
             pid = action.split(':')[0].lstrip('[')
-            if self.pid != pid:
-                print(self.pid)
-                self.pid = pid
-                self.path = path
-            else:
-                return False
+            self.pid = pid
+            self.path = path
+            
+            if '?' in self.path:
+                self.path = path.split('?\\')[-1]
+                
+            print('pid_parser',self.pid)
+            print('path_parser',self.path)
+        
+        
 
-    def check_action(self):
+    def get_action(self):
         try:
-            self.get_actions()
+            action = [line for line in open('temp.txt', 'r')][0]
+            return action
         except:
-            pass
-        if self.path:
-            for item in self.definitions:
-                if item in self.path:
-                    self.potential_detection(self.pid)
-                    self.path = ''
-                    return True
-
+            return ''
+            
+    
     def get_definitions(self):
-        if not self.definitions:
-            self.definitions = [line.strip() for line in open(self.file_location)]
-
-    def potential_detection(self, pid):
+        defintions = [line.strip() for line in open('definitions\\behavioural_definitions.txt', 'r')]
+        return defintions
+    
+    def potential_detection(self):
         newline = '& vbCrLf & '
-        path_of_pid = self.get_path_of_pid(pid)
-        if not path_of_pid:
+        print('potential detection pid', self.pid)
+        try:
+            path_of_pid = self.get_path_of_pid(self.pid)
+        except:
+            path_of_pid = 'Unable to reolve path to proccess'
+        if path_of_pid:
+            msg = f'Potential detection!"{newline}"PATH:{path_of_pid}"{newline}"PID:{self.pid}"' \
+                  f'{newline}"PATH ACCESSED:{self.path}'
+            update_and_display_notification(msg)
+        else:
             path_of_pid = 'Error resolving path'
-        msg = '"Potential detection!"' + newline + '"PATH: ' + path_of_pid + '"' + newline + '"PID:' + self.pid + '"' \
-              + newline + '"PATH ACCESSED:' + self.path + '"'
-        update_and_display_notification(msg)
-        if self.virus_total_scan(path_of_pid) > 2:
-            # print('MALWARE DETECTED')
-            # msg == '"MALWARE DETECTED"' + newline + '"PATH: ' + path_of_pid + '"'
-            self.kill_process_via_pid(self.pid)
-            self.quarantine_file([self.pid])
+            msg = f'Potential detection!"{newline}"PATH:{path_of_pid}"{newline}"PID:{self.pid}"' \
+                  f'{newline}"PATH ACCESSED:{self.path}'
+            update_and_display_notification(msg)
+            return False
+        try:
+            rtn = self.virus_total_scan(path_of_pid)
+        except:
+            rtn = 0
+            update_and_display_notification('Unable to access VirusTotal')
+            return 
+            
+        if rtn > 2:
+            print('MALWARE DETECTED')
+            msg = f'MALWARE DETECTED"{newline}"PATH:{path_of_pid}'
+            #self.kill_process_via_pid(self.pid)
+            #self.quarantine_file([path_of_pid])
         else:
             print('clean')
+    
 
 
+
+       
 if __name__ == '__main__':
-    b = BehaviourAnalysis()
-    # update_and_disapay_notification('"Potenital detection!"& vbCrLf & "PATH: c:\\desktop\\mal.exe"& vbCrLf &
-    # "PID:903284"')
-    # print(b.get_actions())
-    # while True:
-    # b.check_action()
+    try:
+        b = BehaviourAnalysis()
+        b.run()
+    except BaseException as e:
+            e = str(e)
+            update_and_display_notification(f'Behavioural Analysis crashed: {e}')
+            exit(-1)
+            
+

@@ -1,1 +1,1 @@
-m =MsgBox("Potenital detection!"& vbCrLf & "PATH: Error resolving path"& vbCrLf & "PID:"& vbCrLf & "PATH ACCESSED:", 16, "PyAV")
+m =MsgBox("Potential detection!"& vbCrLf & "PATH:C:\Windows\System32\notepad.exe"& vbCrLf & "PID:10408"& vbCrLf & "PATH ACCESSED:C:\Windows", 16, "PyAV")

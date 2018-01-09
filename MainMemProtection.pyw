@@ -1,27 +1,26 @@
+#ensure data in the registry has been initlized before usage
 import os
-from ProcessesClass import ProcessMonitor
+from ConfigMGRClass import update_and_display_notification
+from ProcessesClass import ProcessMonitor 
 from HookProcessClass import HookProcess
-from CleanMemoryClass import CleanMemory
+from CleanMemoryClass import CleanMemory 
 
 h = HookProcess()
 p = ProcessMonitor()
 z = CleanMemory()
 
 
-def update_and_display_notification(msg):
-    message = 'm =MsgBox(' + msg + ', 16, "PyAV")'
-    with open('notification.vbs', 'w') as f:
-        f.write(message)
-    os.startfile('notification.vbs')
-
-
 def hook_manager():
     prev_pids = set(p.get_all_hookable_processes())
 
     while True:
-        if not h.get_state():
-            state_mgr()
+        try:
+            if not h.get_state():
+                state_mgr()
+        except:
+            pass
 
+            
         curr_pids = set(p.get_all_hookable_processes())
         dead = p.find_dead(prev_pids, curr_pids)
         live = p.find_live(prev_pids, curr_pids)
@@ -65,18 +64,16 @@ def state_mgr():
     z.garbage_collection()
     while not h.get_state():
         print('idle')
-        pass
     h.initialize_hook()
-
-
-class __CleanUpStub:  # on exit
-    def __del__(self):
-        print('on exit')
-        z.garbage_collection()
 
 
 if __name__ == '__main__':
     z.garbage_collection()
-    h.initialize_hook()
-    s = __CleanUpStub()
-    hook_manager()
+    try:
+        h.initialize_hook()
+        hook_manager()
+    except BaseException as e:
+        e = str(e)
+        z.garbage_collection()
+        update_and_display_notification(f'Mem-protection has crashed: {e}')
+        exit(-1)

@@ -3,7 +3,7 @@ import os
 from CleanMemoryClass import CleanMemory
 
 
-class StartupProgramsRetrial(CleanMemory):
+class StartupProgramsRetrival(CleanMemory):
     def __init__(self):
         super().__init__()
         self.common_extensions = ['.exe ', '.vbs ', '.bat ', '.dll ', '.sys ']

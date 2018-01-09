@@ -2,12 +2,14 @@ from tkinter import *
 import os
 import subprocess
 from systray import SysTrayIcon
+from ConfigMGRClass import update_and_display_notification
 from MainProgramFunctionAndParser import MainProgram
 
 
 class UI:
     def __init__(self):
-        self.commands_stack = []
+        self.command_index = 0
+        self.command_stack = []
         self.ASCII_ART = \
             ' _____           __      __\n' \
             '|  __ \         /\ \    / /\n' \
@@ -18,7 +20,7 @@ class UI:
             '        __/ |              \n' \
             '       |___/               \n'
 
-        self.INITAL_TEXT = '\nWelcome to PyAV\nType commands in the text box above\nHit enter to send them to the pro' \
+        self.INITIAL_TEXT = '\nWelcome to PyAV\nType commands in the text box above\nHit enter to send them to the pro' \
                            'gram\n--? for help\nfor File paths use "\\\\" instead of "\\" except for the behavioural analysis\n' \
                             'Where you must use a single backslash\nWaiting for input...\n\n'
 
@@ -42,14 +44,29 @@ class UI:
         self.text_box = Text(master, background='black', foreground="yellow")
         self.text_box.pack(fill='both', expand=1)
         self.text_box.insert(END, self.ASCII_ART)
-        self.text_box.insert(END, self.INITAL_TEXT)
+        self.text_box.insert(END, self.INITIAL_TEXT)
         self.text_box.config(state=DISABLED)
 
         master.bind('<Return>', self.get_input)
+        master.bind('<Up>', self.load_previous_arg)
 
-    def get_input(self, event):  # TODO: replace with '_' if unneeded
+    def load_previous_arg(self, _):
+        try:
+            print(self.command_stack)
+            text = self.command_stack[self.command_index]
+            self.command_index -= 1 #stack grows down
+        except:
+           text = ''
+        print(self.command_index)
+        self.input_box.delete(0,END)
+        self.input_box.insert(0,text)             
+        
+
+    def get_input(self, _): 
         arguments = self.input_box.get()
         self.input_box.delete(0, END)
+        self.command_index = 0
+        self.command_stack.append(arguments)
         try:
             ret = main.main_program_parse_args(arguments)
             if ret:
@@ -128,17 +145,23 @@ def run_modules(module: str):
 
 def health_check(main):
     core_paths = ['Engine\\EasyHook.dll', 'Engine\\EasyHook32.dll', 'Engine\\EasyHook64.dll', 'Engine\\EasyHook32Svc.exe', 'Engine\\EasyHook64Svc.exe',
-                  'Engine\\FileMonitorHook.dll', 'Engine\\FileMonitor.exe', 'definitions\\behavioural_definitions.txt']   
-    creatable_paths = ['args.bat', 'hidewin.vbs', 'temp.txt', 'malware_vault\\QuarantineConfig.txt', 'config\\config.txt',
-                       'config\\exclusions.txt','config\\VirusTotalApiKeys.txt']
+                  'Engine\\FileMonitorHook.dll', 'Engine\\FileMonitor.exe', 'definitions\\behavioural_definitions.txt']
+    
+    
     
     [core_paths.append(f'definitions\\hash_group_sorted_{i}.txt') for i in '0123456789abcdef']
-    
-    if [i for i in core_paths if not os.path.exists(i)]:
-        print('Core files missing exiting')
+
+    broken_paths = [i for i in core_paths if not os.path.exists(i)] 
+    if broken_paths:
+        update_and_display_notification(f'Core files missing: {broken_paths}')
         exit(-1)
      
-    [open(i, 'w') for i in creatable_paths if not os.path.exists(i)]
+    if not main.check_keys():
+       try:
+           main.load_defaults()
+       except:
+           update_and_display_notification('unable to load program configuration from registry')
+           exit(-1)
     main.change_state('1')
     print('health check complete')
             

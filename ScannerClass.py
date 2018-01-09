@@ -19,14 +19,15 @@ import inspect
 from tkinter import *
 from ctypes import windll
 from QuarantineClass import Quarantine
-from RetriveStartupProgramsClass import StartupProgramsRetrial
+from RetriveStartupProgramsClass import StartupProgramsRetrival
+from ConfigMGRClass import REG
 
 m = None
 
 
-class Scanner(Quarantine, StartupProgramsRetrial):
+class Scanner(Quarantine, StartupProgramsRetrival, REG):
     def __init__(self):
-        StartupProgramsRetrial.__init__(self)
+        StartupProgramsRetrival.__init__(self)
         self.detections = []
         self.lines = {}
         self.exclusions = []
@@ -49,30 +50,23 @@ class Scanner(Quarantine, StartupProgramsRetrial):
                 elif arg1 == '-quick':
                     self.quick_scan()
                 elif arg1 == '-apikey':
-                    api_key = arg2
-                    if len(api_key) == 64:
-                        if self.add_key_to_config(api_key):
-                            m.UI_print('Successfully added api key')
-                        else:
-                            m.UI_print('Api key already in file')
-                    else:
-                        m.UI_print('Invalid key')
+                    try:
+                        self.add_api_key(arg2)
+                    except BaseException as e:
+                        m.UI_print(str(e))
                 elif arg1 == '-s':
-                    m.UI_print([line + '\n' for line in open('config\\exclusions.txt', 'r')])
+                    m.UI_print([line + '\n' for line in self.get_exclusion()])
                 elif arg1 == '-add':
-                    if self.add_exclusion(arg2):
-                        m.UI_print('successfully added exclusion')
-                    else:
-                        m.UI_print(
-                            'Unable to add exclusion due to either the path to the exclusion does not exist or program '
-                            'is unable to access exclusion database')
+                    try:
+                        self.add_exclusion(arg2)
+                    except BaseException as e:
+                        m.UI_print(str(e))     
                 elif arg1 == '-remove':
-                    if self.remove_exclusion(arg2):
+                    try:
+                        self.remove_exclusion(arg2)
                         m.UI_print('successfully removed exclusion')
-                    else:
-                        m.UI_print(
-                            'Unable to remove exclusion due to either the exclusion is not in the database or program i'
-                            's unable to access the  database')
+                    except BaseException as e:
+                        m.UI_print(str(e))
                 else:
                     m.UI_print('invalid arguments')
                 time.sleep(3)
@@ -85,68 +79,29 @@ class Scanner(Quarantine, StartupProgramsRetrial):
         master.after(0, stub)
         mainloop()
 
-    @staticmethod
-    def add_exclusion(path):
-        path = path + '\n'
-        if path in [line for line in open('config\exclusions.txt', 'r')]:
-            return False
-        open('config\exclusions.txt', 'a').write(path)
-        return True
-
-    @staticmethod
-    def remove_exclusion(path):
-        path = path + '\n'
-        if path not in [line for line in open('config\exclusions.txt', 'r')]:
-            return False
-        items.remove(path)
-        print(items)
-        with open('config\exclusions.txt', 'a') as f:
-            f.truncate(0)
-            [f.write(item) for item in items]
-        return True
-
-    @staticmethod
-    def add_key_to_config(api_key):
-        if api_key not in [line for line in open('config\VirusTotalApiKeys.txt', 'r')]:
-            with open('config\VirusTotalApiKeys.txt', 'a') as f:
-                f.write(api_key+'\n')
-                return True
-        return False
-
-    @staticmethod
-    def get_key_from_config():
-        api_keys = []
-        with open('config\VirusTotalApiKeys.txt', 'r') as f:
-            for line in f:
-                api_keys.append(line)
-        return random.choice(api_keys)
 
     def virus_total_scan(self, path):
-        try:
-            hash_ = self.file_hasher(path)
-        except BaseException as _:
-            raise FileNotFoundError('unable to hash file')
-        api_key = self.get_key_from_config()
+        hash_ = self.file_hasher(path)
+        api_key = self.retrive_api_key()
         params = {'apikey': api_key, 'resource': hash_}
         headers = {"Accept-Encoding": "gzip, deflate", "User-Agent": "Chrome/41.0.2228.0"}
         response = requests.get('https://www.virustotal.com/vtapi/v2/file/report', params=params, headers=headers)
         try:
             tests = response.json()['scans']
         except:
-            raise FileNotFoundError(json.loads(response.content)['verbose_msg'])
+            raise FileNotFoundError(json.loads(response.content or '{"verbose_msg":\"UnkownError\"}')['verbose_msg'])
         return sum(t['detected'] for t in tests.values())
 
     @staticmethod
     def resolve_connected_drives():
         rtn = windll.kernel32.GetLogicalDrives()
         letters = [chr(65 + i) for i in range(26) if rtn >> i & 1]
-        for i in letters:
-            i = i + ':\\'
-            yield i
+        yield from (f'{i}:\\' for i in letters)
+
 
     def pre_scan_operations(self):  # computes file line numbers for binary search, loades exclusions
         if not self.exclusions:
-            self.exclusions = [line.strip() for line in open('config\\exclusions.txt')]
+            self.exclusions = [line for line in self.get_exclusion()]
 
         if not self.lines:
             try:
@@ -172,13 +127,18 @@ class Scanner(Quarantine, StartupProgramsRetrial):
             pass
 
     def file_hasher(self, path):
+        
         # manipulate file path from here
         if os.path.getsize(path) > 52428800:
             raise EnvironmentError('Error: File is too large to be scanned skipping....')
         elif os.path.getsize(path) == 0:
             raise EnvironmentError('Error: File is empty skipping....')
-        elif path in self.exclusions: # todo folder exclusion
-            raise EnvironmentError('File Excluded From Scan skipping....')
+        if inspect.stack()[1][3] != 'virus_total_scan':
+            for item in self.exclusions:            
+                if os.path.samefile(item, path):
+                    raise EnvironmentError('File Excluded From Scan skipping....')
+                elif item in path: 
+                    raise EnvironmentError('File Excluded From Scan skipping....')
 
         BLOCKSIZE = 65536
         hasher = hashlib.md5()
@@ -255,9 +215,10 @@ class Scanner(Quarantine, StartupProgramsRetrial):
 
         if flag:
             if self.detections:
-                print('clean')
+                print('infected')
                 return True
             else:
+                print('clean')
                 return False
         elif inspect.stack()[1][3] != 'quick_scan':
             return self.post_scan()
@@ -355,9 +316,10 @@ class Scanner_UI():
 
 if __name__ == '__main__':
     s = Scanner()
+    #[print(i) for i in s.resolve_connected_drives()]
     # s.quick_scan()
-    # s.file_scan('C:\\Users\\163631\\Desktop\\empty.exe')
-    s.run_scan_args('-all', '')
+    s.file_scan('C:\Windows\System32\InstallAgent.exe', 1)
+    # s.run_scan_args('-all', '')
     # s.full_scan()
     # s.file_scan('C:\\Users\ASUS\Desktop\mal.exe')
 

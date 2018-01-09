@@ -1,7 +1,9 @@
+#ensure data in the registry has been initlized before usage
 import os
+from ConfigMGRClass import update_and_display_notification
 from datetime import datetime
 from ProcessesClass import ProcessMonitor
-from CleanMemoryClass import CleanMemory
+from CleanMemoryClass import CleanMemory#not used by class
 from ScannerClass import Scanner
 
 # timer
@@ -24,42 +26,31 @@ class HookProcess(ProcessMonitor, Scanner):
         self.active_hooked_pids = dict()  # HookedPid : FileMonPid
 
         self.__void = ['cmd.exe', 'WMIC.exe', 'pythonw.exe', 'conhost.exe', 'FileMonitor.exe', 'iexplore.exe',
-                       'EasyHook32Svc.exe', 'chrome.exe']
+                       'EasyHook32Svc.exe', 'chrome.exe', 'python.exe', 'OneDrive.exe', 'pyw.exe', 'wscript.exe']
         self.processes = []
         self.name = ''
         self.pid = 0
 
-    @staticmethod
-    def get_state():
-        with open('config\config.txt', 'r') as f:
-            for line in f:
-                line_ = line.split(':')
-                if line_[0] == 'state':
-                    state = line_[-1]
-                    state.strip()
-                    return int(state)
-
-    @staticmethod
-    def change_state(state):
-        with open('config\config.txt', 'w') as f:
-            f.write('state:' + state)
 
     # noinspection PyTypeChecker
     def hook(self):
         if self.name in self.__void:
             print('Did not inject into', self.name)
         elif not self.scan_process():
-            with open('args.bat', 'w') as f:
-                print('echo off\nEngine\FileMonitor.exe', self.pid, file=f)
-                print('HookAgent Initialized on', self.pid, self.name)
+            try:
+                with open('args.bat', 'w') as f:
+                    print('echo off\nEngine\FileMonitor.exe', self.pid, file=f)
+                    print('HookAgent Initialized on', self.pid, self.name)
 
-            os.startfile('hidewin.vbs')
-            self.get_spawned_file_mon_Pid()
+                os.startfile('hidewin.vbs')
+                self.get_spawned_file_mon_pid()
+            except:
+                pass
         self.name = ''
         self.pid = 0
         # time.sleep(1)
 
-    def get_spawned_file_mon_Pid(self):
+    def get_spawned_file_mon_pid(self):
         found = False
         curr_time = 0
         inital_time = str(datetime.now().time()).split(':')[-1]
@@ -106,9 +97,10 @@ class HookProcess(ProcessMonitor, Scanner):
             print(e)
             return
         if result:
+            update_and_display_notification(f'Malicious process ({self.pid}) detected: {path}')
             self.kill_process_via_pid(self.pid)
             print('killed')
-            self.quarantine_file(self.detections)
+            self.quarantine_file([path])
             print('cleaned')
         return result
 
