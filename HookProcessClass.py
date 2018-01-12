@@ -34,6 +34,7 @@ class HookProcess(ProcessMonitor, Scanner):
 
     # noinspection PyTypeChecker
     def hook(self):
+        print()
         if self.name in self.__void:
             print('Did not inject into', self.name)
         elif not self.scan_process():
@@ -100,8 +101,11 @@ class HookProcess(ProcessMonitor, Scanner):
             update_and_display_notification(f'Malicious process ({self.pid}) detected: {path}')
             self.kill_process_via_pid(self.pid)
             print('killed')
-            self.quarantine_file([path])
-            print('cleaned')
+            try:
+                self.quarantine_file([path])
+                print('cleaned')
+            except:
+                print('unable to quarantine file')
         return result
 
 

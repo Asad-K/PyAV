@@ -42,9 +42,17 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
                 m = Scanner_UI(master)
                 m.UI_print('Running arguments ' + arg1 + ' ' + arg2)
                 if arg1 == '-F':
-                    self.folder_scan(arg2)
+                    path = os.path.abspath(arg2)
+                    print(path)
+                    if not os.path.exists(path):
+                        raise EnvironmentError('Error: path did not parse properly')
+                    self.folder_scan(path)
                 elif arg1 == '-f':
-                    self.file_scan(arg2, 0)
+                    path = os.path.abspath(arg2)
+                    print(path)
+                    if not os.path.exists(path):
+                        raise EnvironmentError('Error: path did not parse properly')
+                    self.file_scan(path, 0)
                 elif arg1 == '-all':
                     self.full_scan()
                 elif arg1 == '-quick':
@@ -55,10 +63,11 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
                     except BaseException as e:
                         m.UI_print(str(e))
                 elif arg1 == '-s':
-                    m.UI_print([line + '\n' for line in self.get_exclusion()])
+                    m.UI_print([line for line in self.get_exclusion()])
                 elif arg1 == '-add':
                     try:
                         self.add_exclusion(arg2)
+                        return 'succesfully added exclusion'
                     except BaseException as e:
                         m.UI_print(str(e))     
                 elif arg1 == '-remove':
@@ -69,8 +78,6 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
                         m.UI_print(str(e))
                 else:
                     m.UI_print('invalid arguments')
-                time.sleep(3)
-                m.destroy()
             except _tkinter.TclError:
                 raise EnvironmentError('Scan was terminated by user')
             finally:
@@ -81,6 +88,8 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
 
 
     def virus_total_scan(self, path):
+        if not self.exclusions:
+            self.exclusions = [line for line in self.get_exclusion()]
         hash_ = self.file_hasher(path)
         api_key = self.retrive_api_key()
         params = {'apikey': api_key, 'resource': hash_}
@@ -102,7 +111,6 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
     def pre_scan_operations(self):  # computes file line numbers for binary search, loades exclusions
         if not self.exclusions:
             self.exclusions = [line for line in self.get_exclusion()]
-
         if not self.lines:
             try:
                 m.UI_print('running pre-scan operations')
@@ -127,18 +135,12 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
             pass
 
     def file_hasher(self, path):
-        
         # manipulate file path from here
         if os.path.getsize(path) > 52428800:
             raise EnvironmentError('Error: File is too large to be scanned skipping....')
         elif os.path.getsize(path) == 0:
             raise EnvironmentError('Error: File is empty skipping....')
-        if inspect.stack()[1][3] != 'virus_total_scan':
-            for item in self.exclusions:            
-                if os.path.samefile(item, path):
-                    raise EnvironmentError('File Excluded From Scan skipping....')
-                elif item in path: 
-                    raise EnvironmentError('File Excluded From Scan skipping....')
+        self.check_exclusion(path)
 
         BLOCKSIZE = 65536
         hasher = hashlib.md5()
@@ -149,6 +151,23 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
                 buf = afile.read(BLOCKSIZE)
         hash_ = hasher.hexdigest()
         return hash_.strip()
+    
+    def check_exclusion(self, path):
+        for item in self.exclusions:
+            try:
+                rtn = os.path.samefile(item, path)
+            except:
+                rtn = 0
+            if rtn:
+                raise EnvironmentError('File Excluded From Scan skipping....')
+            
+            try:
+                rtn = os.path.samefile(path[:len(item)], item)
+            except:
+                rtn = 0
+            if rtn:
+                raise EnvironmentError('File Excluded From Scan skipping....')
+        
 
     @staticmethod
     def binary_search(t, lines_count):
@@ -198,20 +217,22 @@ class Scanner(Quarantine, StartupProgramsRetrival, REG):
         for path in self.startup_programs_retrieval():
             self.file_scan(path, 0)
             m.UI_print(path)
-        self.folder_scan('C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup')
+        self.folder_scan('C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup')
         return self.post_scan()
 
     def file_scan(self, path, flag):
         line_count = self.pre_scan_operations()
         try:
             hash_ = self.file_hasher(path)
-            if self.binary_search(hash_.strip(), line_count) != -1:  # -1 means not found
+            if self.binary_search(hash_.strip(), line_count) != -1: 
                 self.detections.append(path)
         except BaseException as e:
             try:
                 m.UI_print(str(e))
+                return False
             except:
                 print(e)
+                return False
 
         if flag:
             if self.detections:
@@ -264,7 +285,7 @@ class Scanner_UI():
     def __init__(self, master):
         self.master = master
         master.protocol('WM_DELETE_WINDOW', self.destroy)
-        master.iconbitmap('icons\icon.ico')
+        master.iconbitmap('icons\\icon.ico')
         master.winfo_toplevel().title("PyAV Scanner")
 
         sheight = master.winfo_screenheight()
@@ -316,11 +337,7 @@ class Scanner_UI():
 
 if __name__ == '__main__':
     s = Scanner()
-    #[print(i) for i in s.resolve_connected_drives()]
-    # s.quick_scan()
-    s.file_scan('C:\Windows\System32\InstallAgent.exe', 1)
-    # s.run_scan_args('-all', '')
-    # s.full_scan()
-    # s.file_scan('C:\\Users\ASUS\Desktop\mal.exe')
+    s.run_scan_args('-all', '')
+ 
 
 # m.main(loop)

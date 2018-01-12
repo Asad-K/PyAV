@@ -3,12 +3,28 @@ import os
 import io
 import winreg
 import random
+import ctypes
 
+def update_and_display_notification(msg, flag=0):
+    if flag:
+        #yes or no
+        type_ = 0x04 #MB_YESNO
+    else:
+        #ok
+        type_ = 0 #MB_OK
+    MessageBox = ctypes.windll.user32.MessageBoxW
+    rtn = MessageBox(None, msg, 'PyAV', type_)
+    if rtn == 6:
+        return True
+    else:
+        return False
+'''
 def update_and_display_notification(msg):
     message = f'm =MsgBox("{msg}", 16, "PyAV")'
     with open('notification.vbs', 'w') as f:
         f.write(message)
     os.startfile('notification.vbs')
+'''
                               
 class REG():
     '''
@@ -39,7 +55,7 @@ class REG():
         winreg.CreateKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\PyAV')
         self.set_key('apikey', ['5fe2ba1c10c5770341fa142b1b97de16dc8ffe4f5af965463c279b3f8d538785'])
         self.set_key('state', '1')
-        self.set_key('exclusions', [])
+        self.set_key('exclusions', ['C:\\Windows', 'C:\\Python362'])
         
         
 
@@ -116,10 +132,7 @@ class REG():
     def get_exclusion(self):
         exs = self.read_key(2)
         return exs
-    
-        
-
-        
+           
                 
     
         
